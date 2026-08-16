@@ -37,8 +37,8 @@ detailed digest.
 **1. Clone and install**
 
 ```bash
-git clone https://github.com/CaptainBlue793/Summascribe.git
-cd Summascribe
+git clone https://github.com/CaptainBlue793/SummaScribe.git
+cd SummaScribe
 
 pip install streamlit langchain transformers torch tiktoken accelerate \
             sentencepiece sentence_transformers pypdf python-multipart
