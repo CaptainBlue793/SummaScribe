@@ -1,164 +1,131 @@
-"""TEXT SUMMARIZATION Web APP"""
+"""Document reading and summarization workspace."""
+import hashlib
+import json
+from pathlib import Path
 
-# Importing Packages
-import base64
 import streamlit as st
-import torch
-from langchain.document_loaders import PyPDFLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from transformers import T5Tokenizer, T5ForConditionalGeneration
-from transformers import pipeline
 
-# Model and Tokenizer
-checkpoint = "Lamini-1"
-tokenizer = T5Tokenizer.from_pretrained(checkpoint)
-base_model = T5ForConditionalGeneration.from_pretrained(checkpoint, device_map="auto", torch_dtype=torch.float32)
+from summarization import LocalSummarizer, extractive_summary, model_source, read_pdf, read_text, validate_pages
 
+SAMPLE = """Urban gardens can improve access to fresh food in neighborhoods with limited grocery stores. Community volunteers maintain shared planting beds and organize seasonal harvests.
 
-# File Loader & Processing
-def file_processing(file):
-    loader = PyPDFLoader(file)
-    pages = loader.load_and_split()
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=200, chunk_overlap=50)
-    texts = text_splitter.split_documents(pages)
-    final_texts = ""
-    for text in texts:
-        print(text)
-        final_texts = final_texts + text.page_content
-    return final_texts
+Rainwater collection reduces the need for municipal irrigation. Composting turns kitchen scraps into nutrients, reducing waste and improving soil health.
+
+Successful projects need secure land access and clear maintenance responsibilities. Schools can use gardens to teach biology, nutrition, and teamwork.
+
+City planners should consider accessibility, water availability, and soil contamination before approving a site. Regular soil testing and raised beds help reduce exposure to pollutants.
+
+Long-term funding remains a challenge. Partnerships with local businesses can cover supplies, while volunteer training supports continuity between growing seasons."""
 
 
-# Language Model Pipeline -> Summarization
-def llm_pipeline(filepath, summary_length):
-    pipe_summ = pipeline(
-        "summarization",
-        model=base_model,  # T5ForConditionalGeneration.from_pretrained(checkpoint),
-        tokenizer=tokenizer,  # T5Tokenizer.from_pretrained(checkpoint),
-        max_length=summary_length,
-        min_length=50,
-    )
-    input = file_processing(filepath)
-    result = pipe_summ(input)
-    result = result[0]["summary_text"]
-    return result
+@st.cache_resource(show_spinner=False, max_entries=2)
+def load_model(source, device):
+    return LocalSummarizer(source, device)
 
 
-# Streamlit Code
-st.set_page_config(layout="wide")
-
-
-# Display Background
-def add_bg_from_local(image_file):
-    with open(image_file, "rb") as image_file:
-        encoded_string = base64.b64encode(image_file.read())
-    st.markdown(
-        f"""
-    <style>
-    .stApp {{
-        background-image: url(data:image/{"png"};base64,{encoded_string.decode()});
-        background-size: cover;
-        opacity:0.9;
-    }}
-    </style>
-    """,
-        unsafe_allow_html=True,
-    )
-
-
-add_bg_from_local("Images/background.jpg")
-
-# Font Style
-with open("font.css") as f:
-    st.markdown("<style>{}</style>".format(f.read()), unsafe_allow_html=True)
-
-# Sidebar
-st.sidebar.image("Images/sidebar_pic.png")
-st.sidebar.title("ABOUT THE APP")
-st.sidebar.write(
-    "SummaScribe: Your PDF wingman! 🚀 Unleash the power of Streamlit and LangChain to transform boring text PDFs into "
-    "snappy summaries. Lightning-fast processing,ninja-level NLP algorithms, and a touch of magic—making info "
-    "extraction a breeze!"
-)
-selected_summary_length = st.sidebar.slider("SELECT SUMMARY STRENGTH", min_value=50, max_value=1000,
-                                            value=500)
-
-
-# Display pdf of a given file
-@st.cache_data
-def display(file):
-    # Opening file from filepath
-    with open(file, "rb") as f:
-        base64_pdf = base64.b64encode(f.read()).decode("utf-8")
-    # Embedding pdf in html
-    display_pdf = (
-        f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="500" '
-        f'type="application/pdf"></iframe>'
-    )
-    # Displaying File
-    st.markdown(display_pdf, unsafe_allow_html=True)
-
-
-# Main content
-st.markdown(
-    """
-    <style>
-    .summascribe-title {
-        font-size: 57px;
-        text-align: center;
-        transition: transform 0.2s ease-in-out;
-    }
-    .summascribe-title span {
-        transition: color 0.2s ease-in-out;
-    }
-    .summascribe-title:hover span {
-        color: #f5fefd; /* Hover color */
-    }
-    .summascribe-title:hover {
-        transform: scale(1.15);
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-text = "SummaScribe"  # Text to be styled
-colored_text = ''.join(
-    ['<span style="color: hsl(220, 60%, {}%);">{}</span>'.format(70 - (i * 10 / len(text)), char) for i, char in
-     enumerate(text)])
-colored_text_with_malt = colored_text + ' <span style="color: hsl(220, 60%, 70%);">&#x2727;</span>'
-st.markdown(f'<h1 class="summascribe-title">{colored_text_with_malt}</h1>', unsafe_allow_html=True)
-
-st.markdown(
-    '<h2 style="font-size:30px;color: #F5FEFD; text-align: center;">Text Document Summarization using LLMs</h2>',
-    unsafe_allow_html=True,
-)
-
-
-# Your Streamlit app content here...
 def main():
-    # st.title("SUMMASCRIBE")
-    # st.subheader("Text Document Summarization using Large Language Models")
-    uploaded_file = st.file_uploader("Upload PDF file", type=["pdf"])
-    with st.expander("NOTE"):
-        st.write(
-            "Summascribe currently accepts PDF documents that contain only text and no images. This limitation is due "
-            "to our app's current focus on leveraging advanced natural language processing (NLP) algorithms to "
-            "extract key information from textual content."
-        )
-    if uploaded_file is not None:
-        if st.button("Summarize"):
-            col1, col2 = st.columns((1, 1))
-            filepath = "data/" + uploaded_file.name
-            with open(filepath, "wb") as temp_file:
-                temp_file.write(uploaded_file.read())
-            with col1:
-                st.info("Uploaded File")
-                display(filepath)
-            with col2:
-                st.spinner(text="In progress...")
-                st.info("Summary")
-                summary = llm_pipeline(filepath, selected_summary_length)
-                st.success(summary, icon="✅")
+    st.set_page_config(page_title="SummaScribe · Document studio", page_icon="✦", layout="wide")
+    st.markdown(f"<style>{Path(__file__).with_name('style.css').read_text()}</style>", unsafe_allow_html=True)
+    st.caption("SUMMASCRIBE / DOCUMENT STUDIO")
+    st.title("Less reading. More understanding.")
+    st.write("Turn a document into a focused summary, with its source close at hand.")
+    with st.sidebar:
+        st.header("Make it yours")
+        method = st.radio("Summary method", ["Extractive", "Local AI"], help="Extractive selects original sentences with page references. Local AI rewrites using cached model weights.")
+        sentences = st.slider("Summary sentences", 3, 20, 8)
+        max_tokens = st.slider("AI output token limit", 40, 400, 180, disabled=method != "Local AI")
+        device = st.selectbox("AI device", ["Auto", "CPU", "CUDA"], disabled=method != "Local AI")
+        password = st.text_input("PDF password (if needed)", type="password")
+        st.caption("Text is processed in memory on the app's host. Local AI uses existing model weights; it does not download them during a request.")
+    upload_col, info_col = st.columns([3, 2], gap="large")
+    with upload_col:
+        uploaded = st.file_uploader("Drop in your document", type=["pdf", "txt", "md"])
+        if st.button("Try a sample document"):
+            st.session_state["notes"] = SAMPLE
+        notes = st.text_area("Or paste your text", key="notes", height=200, max_chars=300_000)
+    with info_col:
+        st.subheader("Your reading companion")
+        st.markdown("**Read across the whole source**  \nLong documents are processed in sections.\n\n**Keep the evidence**  \nExtractive summaries preserve original wording and page references.\n\n**Save your digest**  \nExport a summary or a structured report.")
+        st.caption("Text-based PDFs only. OCR is required for scans. Maximum: 20 MB, 500 pages, 300,000 extracted characters.")
+    pages = None
+    name = "Pasted text"
+    fingerprint = None
+    try:
+        if uploaded is not None:
+            data = uploaded.getvalue()
+            fingerprint = hashlib.sha256(data + password.encode()).hexdigest()
+            name = uploaded.name
+            previous = st.session_state.get("document")
+            if previous and previous["fingerprint"] == fingerprint:
+                pages = previous["pages"]
+            else:
+                with st.spinner("Reading your document…"):
+                    pages = read_pdf(data, password) if uploaded.name.lower().endswith(".pdf") else read_text(data)
+                st.session_state["document"] = {"fingerprint": fingerprint, "pages": pages}
+        elif notes.strip():
+            pages = validate_pages([{"page": 1, "text": notes.strip()}])
+            fingerprint = hashlib.sha256(notes.encode()).hexdigest()
+    except (ValueError, ImportError) as exc:
+        st.error(str(exc) if isinstance(exc, ValueError) else "PDF support needs pypdf. Install requirements.txt in starGPU.")
+    selected_pages = pages
+    if pages and len(pages) > 1:
+        first, last = st.slider("Pages to summarize", 1, len(pages), (1, len(pages)))
+        selected_pages = [page for page in pages if first <= page["page"] <= last]
+    if st.button("Create summary", type="primary", disabled=not pages, use_container_width=True):
+        try:
+            with st.spinner("Building your summary…"):
+                if method == "Extractive":
+                    result = extractive_summary(selected_pages, sentences)
+                else:
+                    model = load_model(model_source(), device)
+                    progress = st.progress(0, text="Starting local model…")
+                    try:
+                        result = model.summarize(selected_pages, max_tokens, lambda value, text: progress.progress(value, text=text))
+                    finally:
+                        progress.empty()
+                result.update({"document": name, "fingerprint": fingerprint, "source_pages": selected_pages})
+                st.session_state["summary"] = result
+        except (OSError, ImportError) as exc:
+            st.error("Local AI weights or dependencies are unavailable. Use Extractive, or follow the model setup in README.md.")
+        except (ValueError, RuntimeError) as exc:
+            st.error(str(exc))
+    result = st.session_state.get("summary")
+    if not result:
+        return
+    st.divider()
+    st.caption(f"Last summary: {result['document']} · {result['method']}. Create a new summary after changing source or settings.")
+    if fingerprint != result["fingerprint"]:
+        st.info("The source has changed. The summary below still belongs to the previous document.")
+    metrics = st.columns(4)
+    words = len(result["summary"].split())
+    for col, label, value in zip(metrics, ["Pages read", "Source words", "Summary words", "Length retained"], [result["pages"], result["source_words"], words, f"{words / max(result['source_words'], 1):.0%}"]):
+        col.metric(label, value)
+    digest, evidence, source = st.tabs(["Your digest", "Evidence & sections", "Original text"])
+    with digest:
+        with st.container(border=True):
+            st.write(result["summary"])
+        if result["method"] == "Local AI":
+            st.caption("AI summaries can omit or misstate details. Check the original before relying on a claim.")
+        report = f"# {result['document']}\n\nMethod: {result['method']}\n\n{result['summary']}\n"
+        if result["evidence"]:
+            report += "\n## Source references\n\n" + "\n".join(f"- Page {row['page']}: {row['text']}" for row in result["evidence"])
+        a, b = st.columns(2)
+        a.download_button("Download Markdown", report, "summascribe-summary.md", "text/markdown")
+        b.download_button("Download JSON", json.dumps(result, indent=2, ensure_ascii=False), "summascribe-summary.json", "application/json")
+    with evidence:
+        for row in result["evidence"]:
+            with st.container(border=True):
+                st.caption(f"SOURCE / PAGE {row['page']}")
+                st.write(row["text"])
+        for index, section in enumerate(result.get("sections", []), 1):
+            with st.expander(f"AI section {index}"):
+                st.write(section)
+        if not result["evidence"]:
+            st.caption("AI sections summarize token-sized portions; they are not sentence-level citations.")
+    with source:
+        for page in result["source_pages"]:
+            with st.expander(f"Page {page['page']}", expanded=len(result["source_pages"]) == 1):
+                st.text(page["text"])
 
 
 if __name__ == "__main__":

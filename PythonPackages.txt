@@ -1,16 +1,1 @@
-Install the python packages as required:
-
-streamlit
-langchain
-transformers
-torch
-fastapi
-tiktoken
-accelerate
-sentence-piece
-sentence_transformers
-python-multipart
-pypdf
-uvicorn
-aiofiles
-chromadb or chromadb-client
+-r requirements-ai.txt
